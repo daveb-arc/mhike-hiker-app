@@ -5,7 +5,7 @@ import 'package:mhike/pages/home/hike_list_view.dart';
 import 'package:mhike/services/auth/auth_service.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/hike.dart';
-import 'package:mhike/services/crud/model/user.dart';
+import 'package:mhike/services/crud/model/user.dart' as mhike_user;
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,282 +16,236 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final MHikeService _mHikeService = MHikeService();
-  late final PageController pageController;
-
-  int currentPage = 0;
-
-  @override
-  void initState() {
-    pageController = PageController(viewportFraction: 0.73);
-    pageController.addListener(() {
-      final page = pageController.page?.round() ?? 0;
-      if (page != currentPage) {
-        setState(() => currentPage = page);
-      }
-    });
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    pageController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final authUser = AuthService.firebase().currentUser;
+    final uid = authUser?.id;
     final email = authUser?.email ?? '';
-    final uid = authUser?.id ?? '';
 
     return Scaffold(
       backgroundColor: const Color(0xff282b41),
       appBar: AppBar(
-        elevation: 0,
         backgroundColor: const Color(0xff282b41),
+        elevation: 0,
+        title: Text(
+          'M Hike',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+        ),
         actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 16.0),
-            child: IconButton(
-              onPressed: () {
-                Navigator.of(context).pushNamed(searchRoute);
-              },
-              icon: Image.asset(
-                'assets/search.png',
-                color: Colors.white,
-                width: 21,
-              ),
-            ),
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).pushNamed(searchRoute);
+            },
+            icon: const Icon(Icons.search),
+          ),
+          IconButton(
+            onPressed: () {
+              Navigator.of(context).pushNamed(addHikeRoute);
+            },
+            icon: const Icon(Icons.add),
           ),
         ],
       ),
-      drawer: ClipRRect(
-        borderRadius: const BorderRadius.horizontal(right: Radius.circular(50)),
-        child: Drawer(
-          backgroundColor: const Color.fromARGB(255, 55, 59, 87),
+      drawer: Drawer(
+        backgroundColor: const Color(0xff282b41),
+        child: SafeArea(
           child: Column(
             children: [
-              DrawerHeader(
-                decoration: const BoxDecoration(
-                  color: Color(0xff282b41),
-                ),
-                child: Center(
+              // header
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Align(
+                  alignment: Alignment.centerLeft,
                   child: Text(
-                    'mhike',
-                    style: GoogleFonts.dancingScript(
-                      fontSize: 82.0,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                    'Account',
+                    style: GoogleFonts.poppins(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 22),
-                child: FutureBuilder<User?>(
-                  future: _mHikeService.getUserByUid(uid).then((u) async {
-                    // fallback (older flow) if user doc was created by email query
-                    return u ?? await _mHikeService.getUser(null, email);
-                  }),
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState != ConnectionState.done) {
-                      return const SizedBox(height: 70);
-                    }
-                    final user = snapshot.data;
-                    if (user == null) {
-                      return const Text(
-                        'No profile found',
-                        style: TextStyle(color: Colors.white),
-                      );
-                    }
 
-                    return Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      children: [
-                        const CircleAvatar(
-                          radius: 28,
-                          backgroundImage:
-                              AssetImage('assets/images/pexels3.jpg'),
-                        ),
-                        const VerticalDivider(),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              user.fullName,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.white,
-                              ),
+              // user card
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xff343852),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: FutureBuilder<mhike_user.User?>(
+                    future: () async {
+                      if (uid != null && uid.isNotEmpty) {
+                        final byUid = await _mHikeService.getUserByUid(uid);
+                        if (byUid != null) return byUid;
+                      }
+                      // fallback (older flow): lookup by email
+                      if (email.isNotEmpty) {
+                        return await _mHikeService.getUser(null, email);
+                      }
+                      return null;
+                    }(),
+                    builder: (context, snap) {
+                      final u = snap.data;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            u?.fullName ?? 'Signed in',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                             ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            u?.email ?? email,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                          if ((u?.username ?? '').isNotEmpty) ...[
+                            const SizedBox(height: 6),
                             Text(
-                              '@${user.username}',
-                              style: const TextStyle(
-                                fontSize: 14,
-                                color: Colors.white70,
-                              ),
+                              '@${u!.username}',
+                              style: const TextStyle(color: Colors.white54),
                             ),
                           ],
-                        ),
-                      ],
-                    );
-                  },
+                        ],
+                      );
+                    },
+                  ),
                 ),
               ),
-              const SizedBox(height: 22),
+
+              const SizedBox(height: 12),
+              const Divider(color: Colors.white24),
+
+              // logout
               ListTile(
-                title: const Text('Add Hike', style: TextStyle(color: Colors.white)),
-                leading: const Icon(Icons.add, color: Colors.white),
-                onTap: () {
-                  Navigator.of(context).pushNamed(addHikeRoute);
-                },
-              ),
-              ListTile(
-                title: const Text('Logout', style: TextStyle(color: Colors.white)),
-                leading: const Icon(Icons.logout, color: Colors.white),
+                leading: const Icon(Icons.logout),
+                title: const Text('Log out'),
                 onTap: () async {
-                  await AuthService.firebase().logout();
+                  Navigator.of(context).pop();
+                  await AuthService.firebase().logout(); // ✅ lowercase logout()
                   if (!mounted) return;
-                  Navigator.of(context).pushNamedAndRemoveUntil(loginRoute, (_) => false);
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    loginRoute,
+                    (route) => false,
+                  );
                 },
               ),
             ],
           ),
         ),
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Popular',
-              style: GoogleFonts.montserrat(
-                fontSize: 38,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+
+      body: StreamBuilder<List<Hike>>(
+        stream: _mHikeService.allHikes,
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  'Error loading hikes:\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
+                ),
               ),
-            ),
-            const SizedBox(height: 12),
+            );
+          }
+          if (!snapshot.hasData) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-            // POPULAR CAROUSEL
-            SizedBox(
-              height: 400,
-              child: StreamBuilder<List<Hike>>(
-                stream: _mHikeService.allHikes,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+          final hikes = snapshot.data ?? [];
 
-                  final allHikes = snapshot.data!;
-                  final popularHikes = allHikes
-                      .where((h) => (h.popularityIndex ?? 999999) < 10)
-                      .toList();
+          // "popular" rule used in your model comment
+          final popular = hikes
+              .where((h) => (h.popularityIndex ?? 999999) < 10)
+              .toList();
 
-                  if (popularHikes.isEmpty) {
-                    return const Center(
-                      child: Text('No popular hikes yet',
-                          style: TextStyle(color: Colors.white70)),
-                    );
-                  }
+          return SingleChildScrollView(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _sectionTitle('Popular'),
+                const SizedBox(height: 10),
 
-                  return PageView.builder(
-                    padEnds: false,
-                    controller: pageController,
-                    itemCount: popularHikes.length,
-                    itemBuilder: (context, index) {
-                      final active = index == currentPage;
-                      // Your existing card widget expects Hike; keep as-is
-                      return _PopularCardWrapper(
-                        active: active,
-                        hike: popularHikes[index],
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
+                if (popular.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    child: Text(
+                      'No popular hikes yet',
+                      style: TextStyle(color: Colors.white54),
+                    ),
+                  )
+                else
+                  _popularCard(context, popular.first),
 
-            const SizedBox(height: 28),
+                const SizedBox(height: 28),
+                _sectionTitle('All Hikes'),
+                const SizedBox(height: 10),
 
-            Text(
-              'All Hikes',
-              style: GoogleFonts.montserrat(
-                fontSize: 34,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // ALL HIKES LIST
-            StreamBuilder<List<Hike>>(
-              stream: _mHikeService.allHikes,
-              builder: (context, snapshot) {
-                if (!snapshot.hasData) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                final hikes = snapshot.data!;
-                return HikeListView(
+                HikeListView(
                   hikes: hikes,
                   onDeleteHike: (hike) async {
                     final id = hike.id;
                     if (id == null) return;
                     await _mHikeService.deleteHike(id: id);
                   },
-                );
-              },
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
-}
 
-// Minimal wrapper so you don’t have to refactor your existing popular card widget.
-// Replace this with your existing widget if you already have one.
-class _PopularCardWrapper extends StatelessWidget {
-  final bool active;
-  final Hike hike;
+  Widget _sectionTitle(String text) {
+    return Text(
+      text,
+      style: GoogleFonts.poppins(
+        fontSize: 34,
+        fontWeight: FontWeight.w700,
+      ),
+    );
+  }
 
-  const _PopularCardWrapper({
-    required this.active,
-    required this.hike,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    // If you already had a popular card widget, use it here.
-    // For now, reuse HikeListView card patterns elsewhere, or keep your existing.
-    return Padding(
-      padding: const EdgeInsets.only(right: 16.0),
-      child: Opacity(
-        opacity: active ? 1.0 : 0.6,
-        child: Container(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(18),
-            color: const Color.fromARGB(255, 55, 59, 87),
-          ),
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(hike.title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700)),
-              const SizedBox(height: 8),
-              Text(hike.location,
-                  style: const TextStyle(color: Colors.white70)),
-              const Spacer(),
-              const Text('Tap a hike card in All Hikes for details',
-                  style: TextStyle(color: Colors.white38, fontSize: 12)),
-            ],
-          ),
+  Widget _popularCard(BuildContext context, Hike hike) {
+    return GestureDetector(
+      onTap: () {
+        Navigator.of(context).pushNamed(
+          hikeDetailRoute,
+          arguments: hike,
+        );
+      },
+      child: Container(
+        height: 180,
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: const Color(0xff343852),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              hike.title,
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            Text(hike.location, style: const TextStyle(color: Colors.white70)),
+            const Spacer(),
+            const Text(
+              'Tap to view details',
+              style: TextStyle(color: Colors.white38, fontSize: 12),
+            ),
+          ],
         ),
       ),
     );
