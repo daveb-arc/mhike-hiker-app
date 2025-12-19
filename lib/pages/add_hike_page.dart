@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -5,8 +8,6 @@ import 'package:mhike/constants/routes.dart';
 import 'package:mhike/services/auth/auth_service.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/hike.dart';
-import 'package:mhike/utilities/generics/get_arguments.dart';
-import 'package:mhike/utilities/utility.dart';
 
 class AddHikePage extends StatefulWidget {
   const AddHikePage({super.key});
@@ -16,812 +17,238 @@ class AddHikePage extends StatefulWidget {
 }
 
 class _AddHikePageState extends State<AddHikePage> {
-  late final MHikeService _mHikeService;
+  final MHikeService _mHikeService = MHikeService();
 
-  // declare a GlobalKey
-  final _formKey = GlobalKey<FormState>();
+  final _titleController = TextEditingController();
+  final _locationController = TextEditingController();
+  final _lengthController = TextEditingController();
+  final _estimatedTimeController = TextEditingController();
+  final _descriptionController = TextEditingController();
 
-  String? _coverImage;
+  bool _parking = false;
+  String? _difficulty;
+  DateTime? _date;
 
-  Hike? _hike;
-
-  late final TextEditingController _titleController;
-  late final TextEditingController _lengthController;
-  late final TextEditingController _estimatedTimeController;
-  late final TextEditingController _descriptionController;
-  late final TextEditingController _locationController;
-
-  final difficultyLevels = [
-    "Easiest",
-    "Easy",
-    "Moderate",
-    "Challenging",
-    "Very Difficult",
-  ];
-
-  final parkingAvailability = [
-    "Yes",
-    "No",
-  ];
-
-  String? _selectedDifficultyLevel;
-  String? _selectedParkingAvailability;
-  Hike? widgetHike;
-
-  DateTime _currentOrSelectedOrDateTime = DateTime.now();
-  String _date = "Select Hike Date";
-
-  @override
-  void initState() {
-    _mHikeService = MHikeService();
-    _titleController = TextEditingController();
-    _lengthController = TextEditingController();
-    _estimatedTimeController = TextEditingController();
-    _descriptionController = TextEditingController();
-    _locationController = TextEditingController();
-    super.initState();
-  }
+  String? _coverBase64;
+  bool _saving = false;
 
   @override
   void dispose() {
     _titleController.dispose();
+    _locationController.dispose();
     _lengthController.dispose();
     _estimatedTimeController.dispose();
     _descriptionController.dispose();
-    _locationController.dispose();
     super.dispose();
   }
 
-  Future<Hike?> getHikeDetail(BuildContext context) async {
-    final widgetHike = context.getArgument<Hike>();
+  Future<void> _pickCoverImage() async {
+    final picker = ImagePicker();
+    final XFile? file = await picker.pickImage(source: ImageSource.gallery);
+    if (file == null) return;
 
-    if (widgetHike != null) {
-      _hike = widgetHike;
-      _coverImage = widgetHike.coverImage;
-      _titleController.text = widgetHike.title;
-      _date = DateFormat('yyyy-MM-dd').format(widgetHike.dateTime);
-      _selectedDifficultyLevel = widgetHike.difficultyLevel;
-      _selectedParkingAvailability =
-          widgetHike.parkingAvailability ? 'Yes' : 'No';
-
-      _locationController.text = widgetHike.location;
-      _lengthController.text = widgetHike.length.toString();
-      _estimatedTimeController.text = widgetHike.estimatedTime;
-      if (widgetHike.description != null) {
-        _descriptionController.text = widgetHike.description!;
-      }
-
-      return widgetHike;
-    }
-    return null;
+    final bytes = await file.readAsBytes();
+    setState(() {
+      _coverBase64 = base64Encode(bytes);
+    });
   }
 
-  Future addNewOrUpdateHike() async {
-    // get current user
-    final currentUser = AuthService.firebase().currentUser!;
-    final email = currentUser.email;
-    final user = await _mHikeService.getUser(null, email);
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _date ?? now,
+      firstDate: DateTime(now.year - 5),
+      lastDate: DateTime(now.year + 5),
+    );
+    if (picked == null) return;
+    setState(() => _date = picked);
+  }
 
-    // get form details
-    final title = _titleController.text;
-    final dateTime = _currentOrSelectedOrDateTime;
-    final difficultyLevel = _selectedDifficultyLevel;
-    final parkingAvailability =
-        _selectedParkingAvailability == 'Yes' ? true : false;
-    double length = double.parse(_lengthController.text);
-    final estimatedTime = _estimatedTimeController.text;
-    final location = _locationController.text;
-    final description = _descriptionController.text;
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+  }
 
-    // if hike not null than update
-    if (_hike != null) {
-      Hike updateHike = Hike(
-        id: _hike!.id,
-        userEmail: _hike!.userEmail,
-        coverImage: _coverImage!,
-        title: title,
-        dateTime: dateTime,
-        difficultyLevel: difficultyLevel!,
-        parkingAvailability: parkingAvailability,
-        location: location,
+  Future<void> _saveHike() async {
+    final user = AuthService.firebase().currentUser;
+    if (user == null) {
+      _toast('You must be logged in.');
+      return;
+    }
+
+    final length = double.tryParse(_lengthController.text.trim()) ?? 0.0;
+    if (length <= 0) {
+      _toast('Enter a valid length');
+      return;
+    }
+    if (_difficulty == null || _difficulty!.isEmpty) {
+      _toast('Select difficulty');
+      return;
+    }
+    if (_date == null) {
+      _toast('Pick a date');
+      return;
+    }
+    if (_coverBase64 == null || _coverBase64!.isEmpty) {
+      _toast('Pick a cover image');
+      return;
+    }
+    if (_titleController.text.trim().isEmpty) {
+      _toast('Enter title');
+      return;
+    }
+    if (_locationController.text.trim().isEmpty) {
+      _toast('Enter location');
+      return;
+    }
+
+    setState(() => _saving = true);
+
+    try {
+      final hike = Hike(
+        userId: user.id,
+        userEmail: user.email ?? '',
+        coverImage: _coverBase64!,
+        title: _titleController.text.trim(),
+        location: _locationController.text.trim(),
         length: length,
-        estimatedTime: estimatedTime,
-        description: description,
+        estimatedTime: _estimatedTimeController.text.trim(),
+        description: _descriptionController.text.trim(),
+        parking: _parking,
+        difficulty: _difficulty!,
+        date: _date!,
+        popularityIndex: 0,
       );
 
-      _mHikeService.updateHike(hike: updateHike);
+      await _mHikeService.createHike(hike);
+
       if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(
-        hikeDetailRoute,
-        arguments: updateHike,
-      );
-    } else {
-      // create new hike object and add new
-      Hike newHike = Hike(
-        userEmail: email,
-        title: title,
-        coverImage: _coverImage!,
-        dateTime: dateTime,
-        difficultyLevel: difficultyLevel!,
-        parkingAvailability: parkingAvailability,
-        location: location,
-        length: length,
-        estimatedTime: estimatedTime,
-        description: description,
-      );
-      _mHikeService.addHike(
-        user: user,
-        newHike: newHike,
-      );
-      if (!mounted) return;
-      Navigator.of(context).pushReplacementNamed(
+      Navigator.of(context).pushNamedAndRemoveUntil(
         homeRoute,
+        (route) => false,
       );
+    } catch (e) {
+      _toast('Failed to save hike: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    Uint8List? previewBytes;
+    if (_coverBase64 != null && _coverBase64!.isNotEmpty) {
+      previewBytes = base64Decode(_coverBase64!);
+    }
+
     return Scaffold(
-      backgroundColor: const Color(0xff282b41),
       appBar: AppBar(
-        backgroundColor: const Color(0xff282b41),
-        elevation: 0,
-        title: const Text('Edit or Add Hike'),
-        actions: [
-          Padding(
-            padding: const EdgeInsets.only(right: 14.0),
-            child: IconButton(
-              onPressed: () async {
-                if (_formKey.currentState!.validate()) {
-                  _formKey.currentState!.save();
-                  addNewOrUpdateHike();
-                }
-              },
-              icon: Image.asset(
-                'assets/images/plus.png',
-                color: Colors.white,
-                height: 24,
+        title: const Text('Add Hike'),
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GestureDetector(
+              onTap: _pickCoverImage,
+              child: Container(
+                height: 150,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white12,
+                ),
+                child: previewBytes == null
+                    ? const Center(child: Text('Tap to select cover image'))
+                    : ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Image.memory(previewBytes, fit: BoxFit.cover),
+                      ),
               ),
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+
+            TextField(
+              controller: _titleController,
+              decoration: const InputDecoration(labelText: 'Title'),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _locationController,
+              decoration: const InputDecoration(labelText: 'Location'),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _lengthController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: 'Length'),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _estimatedTimeController,
+              decoration: const InputDecoration(labelText: 'Estimated Time'),
+            ),
+            const SizedBox(height: 10),
+
+            TextField(
+              controller: _descriptionController,
+              maxLines: 4,
+              decoration: const InputDecoration(labelText: 'Description'),
+            ),
+            const SizedBox(height: 10),
+
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Parking'),
+              value: _parking,
+              onChanged: (v) => setState(() => _parking = v),
+            ),
+            const SizedBox(height: 10),
+
+            DropdownButtonFormField<String>(
+              value: _difficulty,
+              items: const [
+                DropdownMenuItem(value: 'Easy', child: Text('Easy')),
+                DropdownMenuItem(value: 'Moderate', child: Text('Moderate')),
+                DropdownMenuItem(value: 'Hard', child: Text('Hard')),
+              ],
+              onChanged: (v) => setState(() => _difficulty = v),
+              decoration: const InputDecoration(labelText: 'Difficulty'),
+            ),
+            const SizedBox(height: 12),
+
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Date'),
+              subtitle: Text(
+                _date == null
+                    ? 'Tap to pick a date'
+                    : DateFormat('y-MM-dd').format(_date!),
+              ),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: _pickDate,
+            ),
+
+            const SizedBox(height: 18),
+
+            ElevatedButton(
+              onPressed: _saving ? null : _saveHike,
+              child: _saving
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Save Hike'),
+            ),
+          ],
+        ),
       ),
-      body: FutureBuilder(
-          future: getHikeDetail(context),
-          builder: (context, snapshot) {
-            switch (snapshot.connectionState) {
-              case ConnectionState.done:
-                return SingleChildScrollView(
-                  child: Padding(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                    child: Container(
-                      padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-                      decoration: BoxDecoration(
-                        color: const Color.fromARGB(255, 55, 59, 87),
-                        borderRadius: BorderRadius.circular(22),
-                      ),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          children: [
-                            Material(
-                              color: Colors.transparent,
-                              child: IconButton(
-                                iconSize: 160,
-                                onPressed: () async {
-                                  ImagePicker()
-                                      .pickImage(source: ImageSource.gallery)
-                                      .then((imgFile) async {
-                                    String imgString = Utility.base64String(
-                                        await imgFile!.readAsBytes());
-
-                                    setState(() {
-                                      _coverImage = imgString;
-                                    });
-                                  });
-                                },
-                                icon: _coverImage != null
-                                    ? Image.memory(
-                                        Utility.dataFromBase64String(
-                                          _coverImage!,
-                                        ),
-                                      )
-                                    : Image.asset(
-                                        'assets/icons/add-image.png',
-                                        color: Colors.white12,
-                                      ),
-                              ),
-                            ),
-
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            TextFormField(
-                              controller: _titleController,
-                              keyboardType: TextInputType.text,
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                fillColor: Colors.white12,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 20,
-                                ),
-                                hintText: 'Hike place name',
-                                border: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                filled: true,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Can\'t be empty';
-                                }
-                                return null;
-                              },
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            // date picker
-                            ElevatedButton(
-                              onPressed: () {
-                                showDatePicker(
-                                  context: context,
-                                  initialDate: _currentOrSelectedOrDateTime,
-                                  firstDate: DateTime(2000),
-                                  lastDate: DateTime(2050),
-                                  helpText: 'Select Hike Date',
-                                ).then(
-                                  (value) {
-                                    if (value != null) {
-                                      setState(
-                                        () {
-                                          _currentOrSelectedOrDateTime = value;
-                                          _date =
-                                              DateFormat('yyyy-MM-dd').format(
-                                            _currentOrSelectedOrDateTime,
-                                          );
-                                        },
-                                      );
-                                    }
-                                  },
-                                );
-                              },
-                              style: ElevatedButton.styleFrom(
-                                alignment: Alignment.centerLeft,
-                                backgroundColor: Colors.white12,
-                                minimumSize: const Size(double.infinity, 60),
-                                elevation: 0,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(22),
-                                ),
-                              ),
-                              child: Padding(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 8),
-                                child: Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      _date.toString(),
-                                      style:
-                                          const TextStyle(color: Colors.white),
-                                    ),
-                                    const Text(
-                                      'Select',
-                                      style: TextStyle(color: Colors.white60),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white12,
-                                borderRadius: BorderRadius.circular(22),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButtonFormField(
-                                  hint: const Text("Difficulty level"),
-                                  borderRadius: BorderRadius.circular(22),
-                                  dropdownColor: const Color(0xFF4f536b),
-                                  isExpanded: true,
-                                  value: _selectedDifficultyLevel,
-                                  items: difficultyLevels
-                                      .map(buildMenuItem)
-                                      .toList(),
-                                  onChanged: (value) {
-                                    setState(
-                                      () {
-                                        _selectedDifficultyLevel = value;
-                                      },
-                                    );
-                                  },
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Please select difficulty level';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 6),
-                              decoration: BoxDecoration(
-                                color: Colors.white12,
-                                borderRadius: BorderRadius.circular(22),
-                              ),
-                              child: DropdownButtonHideUnderline(
-                                child: DropdownButtonFormField(
-                                  hint: const Text("Parking Availability"),
-                                  borderRadius: BorderRadius.circular(22),
-                                  dropdownColor: const Color(0xFF4f536b),
-                                  isExpanded: true,
-                                  value: _selectedParkingAvailability,
-                                  items: parkingAvailability
-                                      .map(buildMenuItem)
-                                      .toList(),
-                                  onChanged: (value) {
-                                    setState(
-                                      () {
-                                        _selectedParkingAvailability = value;
-                                      },
-                                    );
-                                  },
-                                  validator: (value) {
-                                    if (value == null || value.isEmpty) {
-                                      return 'Please select parking availability';
-                                    }
-                                    return null;
-                                  },
-                                ),
-                              ),
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            TextFormField(
-                              controller: _lengthController,
-                              keyboardType: TextInputType.number,
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                fillColor: Colors.white12,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 20,
-                                ),
-                                hintText: 'Hike length (in miles)',
-                                border: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                filled: true,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Can\'t be empty';
-                                }
-                                return null;
-                              },
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            TextFormField(
-                              controller: _locationController,
-                              keyboardType: TextInputType.number,
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                fillColor: Colors.white12,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 20,
-                                ),
-                                hintText: 'Location',
-                                border: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                filled: true,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Can\'t be empty';
-                                }
-                                return null;
-                              },
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            TextFormField(
-                              controller: _estimatedTimeController,
-                              keyboardType: TextInputType.text,
-                              maxLines: 1,
-                              decoration: InputDecoration(
-                                fillColor: Colors.white12,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 20,
-                                ),
-                                hintText: 'Estimated time',
-                                border: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                filled: true,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Can\'t be empty';
-                                }
-                                return null;
-                              },
-                            ),
-                            const Divider(
-                              height: 14,
-                              color: Colors.transparent,
-                            ),
-                            TextField(
-                              controller: _descriptionController,
-                              keyboardType: TextInputType.text,
-                              maxLines: 6,
-                              decoration: InputDecoration(
-                                fillColor: Colors.white12,
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 24,
-                                  vertical: 20,
-                                ),
-                                hintText: 'Description',
-                                border: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderSide: Divider.createBorderSide(context),
-                                  borderRadius: BorderRadius.circular(22.0),
-                                ),
-                                filled: true,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-
-              default:
-                return const CircularProgressIndicator();
-            }
-          }),
-      //  SingleChildScrollView(
-      //   child: Padding(
-      //     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-      //     child: Container(
-      //       padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-      //       decoration: BoxDecoration(
-      //         color: const Color.fromARGB(255, 55, 59, 87),
-      //         borderRadius: BorderRadius.circular(22),
-      //       ),
-      //       child: Column(
-      //         children: [
-      //           Material(
-      //             color: Colors.transparent,
-      //             child: IconButton(
-      //               iconSize: 160,
-      //               onPressed: () {
-      //                 print('object');
-      //               },
-      //               icon: Image.asset(
-      //                 'assets/images/add-image.png',
-      //                 color: Colors.white12,
-      //               ),
-      //             ),
-      //           ),
-
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           TextField(
-      //             controller: _titleController,
-      //             keyboardType: TextInputType.text,
-      //             maxLines: 1,
-      //             decoration: InputDecoration(
-      //               fillColor: Colors.white12,
-      //               contentPadding: const EdgeInsets.symmetric(
-      //                 horizontal: 24,
-      //                 vertical: 20,
-      //               ),
-      //               hintText: 'Hike place name',
-      //               border: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               enabledBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               focusedBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               filled: true,
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           // date picker
-      //           ElevatedButton(
-      //             onPressed: () {
-      //               showDatePicker(
-      //                 context: context,
-      //                 initialDate: _currentOrSelectedOrDateTime,
-      //                 firstDate: DateTime(2000),
-      //                 lastDate: DateTime(2050),
-      //                 helpText: 'Select Hike Date',
-      //               ).then(
-      //                 (value) {
-      //                   if (value != null) {
-      //                     setState(
-      //                       () {
-      //                         _currentOrSelectedOrDateTime = value;
-      //                         _date = DateFormat('yyyy-MM-dd')
-      //                             .format(_currentOrSelectedOrDateTime);
-      //                       },
-      //                     );
-      //                   }
-      //                 },
-      //               );
-      //             },
-      //             style: ElevatedButton.styleFrom(
-      //               alignment: Alignment.centerLeft,
-      //               backgroundColor: Colors.white12,
-      //               minimumSize: const Size(double.infinity, 60),
-      //               elevation: 0,
-      //               shape: RoundedRectangleBorder(
-      //                 borderRadius: BorderRadius.circular(22),
-      //               ),
-      //             ),
-      //             child: Padding(
-      //               padding: const EdgeInsets.symmetric(horizontal: 8),
-      //               child: Row(
-      //                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      //                 children: [
-      //                   Text(
-      //                     _date.toString(),
-      //                     style: const TextStyle(color: Colors.white),
-      //                   ),
-      //                   const Text(
-      //                     'Select',
-      //                     style: TextStyle(color: Colors.white60),
-      //                   ),
-      //                 ],
-      //               ),
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           Container(
-      //             padding:
-      //                 const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-      //             decoration: BoxDecoration(
-      //               color: Colors.white12,
-      //               borderRadius: BorderRadius.circular(22),
-      //             ),
-      //             child: DropdownButtonHideUnderline(
-      //               child: DropdownButton(
-      //                 hint: const Text("Difficulty level"),
-      //                 borderRadius: BorderRadius.circular(22),
-      //                 dropdownColor: const Color(0xFF4f536b),
-      //                 isExpanded: true,
-      //                 value: selectedDifficultyLevel,
-      //                 items: difficultyLevels.map(buildMenuItem).toList(),
-      //                 onChanged: (value) {
-      //                   setState(
-      //                     () {
-      //                       selectedDifficultyLevel = value;
-      //                     },
-      //                   );
-      //                 },
-      //               ),
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           Container(
-      //             padding:
-      //                 const EdgeInsets.symmetric(horizontal: 24, vertical: 6),
-      //             decoration: BoxDecoration(
-      //               color: Colors.white12,
-      //               borderRadius: BorderRadius.circular(22),
-      //             ),
-      //             child: DropdownButtonHideUnderline(
-      //               child: DropdownButton(
-      //                 hint: const Text("Parking Availability"),
-      //                 borderRadius: BorderRadius.circular(22),
-      //                 dropdownColor: const Color(0xFF4f536b),
-      //                 isExpanded: true,
-      //                 value: selectedParkingAvailability,
-      //                 items: parkingAvailability.map(buildMenuItem).toList(),
-      //                 onChanged: (value) {
-      //                   setState(
-      //                     () {
-      //                       selectedParkingAvailability = value;
-      //                     },
-      //                   );
-      //                 },
-      //               ),
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           TextField(
-      //             controller: _lengthController,
-      //             keyboardType: TextInputType.number,
-      //             maxLines: 1,
-      //             decoration: InputDecoration(
-      //               fillColor: Colors.white12,
-      //               contentPadding: const EdgeInsets.symmetric(
-      //                 horizontal: 24,
-      //                 vertical: 20,
-      //               ),
-      //               hintText: 'Hike length (in miles)',
-      //               border: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               enabledBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               focusedBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               filled: true,
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           TextField(
-      //             controller: _estimatedTimeController,
-      //             keyboardType: TextInputType.text,
-      //             maxLines: 1,
-      //             decoration: InputDecoration(
-      //               fillColor: Colors.white12,
-      //               contentPadding: const EdgeInsets.symmetric(
-      //                 horizontal: 24,
-      //                 vertical: 20,
-      //               ),
-      //               hintText: 'Estimated time',
-      //               border: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               enabledBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               focusedBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               filled: true,
-      //             ),
-      //           ),
-      //           const Divider(
-      //             height: 14,
-      //             color: Colors.transparent,
-      //           ),
-      //           TextField(
-      //             controller: _descriptionController,
-      //             keyboardType: TextInputType.text,
-      //             maxLines: 6,
-      //             decoration: InputDecoration(
-      //               fillColor: Colors.white12,
-      //               contentPadding: const EdgeInsets.symmetric(
-      //                 horizontal: 24,
-      //                 vertical: 20,
-      //               ),
-      //               hintText: 'Description',
-      //               border: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               enabledBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               focusedBorder: OutlineInputBorder(
-      //                 borderSide: Divider.createBorderSide(context),
-      //                 borderRadius: BorderRadius.circular(22.0),
-      //               ),
-      //               filled: true,
-      //             ),
-      //           ),
-      //         ],
-      //       ),
-      //     ),
-      //   ),
-      // ),
     );
   }
-}
-
-DropdownMenuItem buildMenuItem(String item) {
-  return DropdownMenuItem(
-    value: item,
-    child: Text(
-      item,
-    ),
-  );
 }

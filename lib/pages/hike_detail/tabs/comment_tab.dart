@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_rating_bar/flutter_rating_bar.dart';
-import 'package:intl/intl.dart';
+
 import 'package:mhike/services/auth/auth_service.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/comment.dart';
@@ -15,18 +14,11 @@ class CommentTab extends StatefulWidget {
 }
 
 class _CommentTabState extends State<CommentTab> {
-  late final MHikeService _mHikeService;
-  late final TextEditingController _commentController;
-  String get email => AuthService.firebase().currentUser!.email;
+  final MHikeService _mHikeService = MHikeService();
 
-  double _hikeRating = 0;
-
-  @override
-  void initState() {
-    _mHikeService = MHikeService();
-    _commentController = TextEditingController();
-    super.initState();
-  }
+  final TextEditingController _commentController = TextEditingController();
+  double _rating = 3.0;
+  bool _saving = false;
 
   @override
   void dispose() {
@@ -34,299 +26,163 @@ class _CommentTabState extends State<CommentTab> {
     super.dispose();
   }
 
-  Future addNewComment() async {
-    final user = _mHikeService.getUser(null, email);
-    // get form details
-    final hikeComment = _commentController.text;
-    final dateTime = DateTime.now();
+  void _toast(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
 
-    // create new comment object
-    Comment newComment = Comment(
-      hikeId: widget.hike.id!,
-      userEmail: email,
-      hikeRating: _hikeRating,
-      hikeComment: hikeComment,
-      dateTime: dateTime,
-    );
-    print(newComment.userEmail);
+  Future<void> _addComment() async {
+    final hikeId = widget.hike.id;
+    if (hikeId == null || hikeId.isEmpty) {
+      _toast('Missing hike id');
+      return;
+    }
 
-    // add observation
-    _mHikeService.addComment(
-      hike: widget.hike,
-      newComment: newComment,
-    );
+    final user = AuthService.firebase().currentUser;
+    if (user == null) {
+      _toast('Please log in to comment.');
+      return;
+    }
+
+    final text = _commentController.text.trim();
+    if (text.isEmpty) return;
+
+    setState(() => _saving = true);
+
+    try {
+      final newComment = Comment(
+        hikeId: hikeId,
+        userId: user.id,
+        userEmail: user.email ?? '',
+        rating: _rating,
+        text: text,
+        dateTime: DateTime.now(),
+      );
+
+      await _mHikeService.addComment(
+        hikeId: hikeId,
+        comment: newComment,
+      );
+
+      _commentController.clear();
+      setState(() => _rating = 3.0);
+    } catch (e) {
+      _toast('Failed to add comment: $e');
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: StreamBuilder(
-        stream: _mHikeService.allComments,
-        builder: (context, snapshot) {
-          switch (snapshot.connectionState) {
-            case ConnectionState.waiting:
-            case ConnectionState.active:
-              if (snapshot.hasData) {
-                final allComments = snapshot.data as List<Comment>;
-                final hikeComments = allComments
-                    .where(
-                      (comment) => comment.hikeId == widget.hike.id,
-                    )
-                    .toList();
-                return ListView.separated(
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: hikeComments.length + 1,
-                  separatorBuilder: (context, index) => const Divider(
-                    height: 12,
-                    color: Colors.transparent,
-                  ),
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return Container(
-                        padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-                        decoration: BoxDecoration(
-                          color: const Color.fromARGB(255, 55, 59, 87),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 12),
-                              child: CircleAvatar(
-                                radius: 24,
-                                backgroundImage:
-                                    AssetImage('assets/images/pexels3.jpg'),
-                              ),
-                            ),
-                            const VerticalDivider(
-                              color: Colors.transparent,
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Priyank Tejani',
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                  const Divider(
-                                    color: Colors.transparent,
-                                    height: 4,
-                                  ),
-                                  RatingBar.builder(
-                                    initialRating: 0,
-                                    minRating: 1,
-                                    direction: Axis.horizontal,
-                                    allowHalfRating: true,
-                                    itemCount: 5,
-                                    itemSize: 18,
-                                    itemPadding: const EdgeInsets.symmetric(
-                                      horizontal: 1,
-                                    ),
-                                    itemBuilder: (context, _) => const Icon(
-                                      Icons.star,
-                                      color: Color(0xFFF4C465),
-                                    ),
-                                    onRatingUpdate: (rating) {
-                                      setState(() {
-                                        _hikeRating = rating;
-                                      });
-                                      _hikeRating = rating;
-                                    },
-                                  ),
-                                  const Divider(
-                                    color: Colors.transparent,
-                                    height: 12,
-                                  ),
-                                  TextField(
-                                    controller: _commentController,
-                                    keyboardType: TextInputType.text,
-                                    maxLines: 3,
-                                    decoration: InputDecoration(
-                                      fillColor: Colors.white12,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                        horizontal: 24,
-                                        vertical: 20,
-                                      ),
-                                      hintText: 'Comment',
-                                      border: OutlineInputBorder(
-                                        borderSide:
-                                            Divider.createBorderSide(context),
-                                        borderRadius:
-                                            BorderRadius.circular(22.0),
-                                      ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide:
-                                            Divider.createBorderSide(context),
-                                        borderRadius:
-                                            BorderRadius.circular(22.0),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide:
-                                            Divider.createBorderSide(context),
-                                        borderRadius:
-                                            BorderRadius.circular(22.0),
-                                      ),
-                                      filled: true,
-                                    ),
-                                  ),
-                                  const Divider(
-                                    color: Colors.transparent,
-                                    height: 12,
-                                  ),
-                                  ElevatedButton(
-                                    onPressed: () {
-                                      addNewComment();
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      minimumSize: const Size(
-                                        double.infinity,
-                                        56,
-                                      ),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(18),
-                                      ),
-                                      backgroundColor: const Color(0xff282b41),
-                                    ),
-                                    child: const Text(
-                                      'Comment',
-                                      style: TextStyle(fontSize: 16),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            )
-                          ],
-                        ),
-                      );
-                    }
+    final hikeId = widget.hike.id;
 
-                    final comment = hikeComments[index - 1];
-                    if (comment.hikeId == widget.hike.id) {
-                      return Container(
-                        padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-                        decoration: BoxDecoration(
-                          color: const Color.fromARGB(255, 55, 59, 87),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Padding(
-                              padding: EdgeInsets.only(top: 12),
-                              child: CircleAvatar(
-                                radius: 24,
-                                backgroundImage: AssetImage(
-                                  'assets/images/pexels3.jpg',
-                                ),
-                              ),
-                            ),
-                            const VerticalDivider(
-                              color: Colors.transparent,
-                            ),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    children: [
-                                      const Text(
-                                        'Priyank Tejani',
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      const VerticalDivider(
-                                        color: Colors.transparent,
-                                        width: 6,
-                                      ),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8.5,
-                                          vertical: 5,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          borderRadius:
-                                              BorderRadius.circular(8),
-                                          color: Colors.white,
-                                        ),
-                                        child: Text(
-                                          
-                                          DateFormat('yyyy-MM-dd').format(comment.dateTime),
-                                          style: const TextStyle(
-                                            color: Colors.black,
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  const Divider(
-                                    color: Colors.transparent,
-                                    height: 4,
-                                  ),
-                                  RatingBar.builder(
-                                    initialRating: comment.hikeRating,
-                                    minRating: 1,
-                                    direction: Axis.horizontal,
-                                    allowHalfRating: true,
-                                    itemCount: 5,
-                                    itemSize: 18,
-                                    itemPadding: const EdgeInsets.symmetric(
-                                        horizontal: 1),
-                                    itemBuilder: (context, _) => const Icon(
-                                      Icons.star,
-                                      color: Color(0xFFF4C465),
-                                    ),
-                                    onRatingUpdate: (rating) {},
-                                  ),
-                                  const Divider(
-                                    color: Colors.transparent,
-                                    height: 4,
-                                  ),
-                                  Text(
-                                    comment.hikeComment,
-                                    maxLines: 3,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 16),
-                                  ),
-                                ],
-                              ),
-                            )
-                          ],
-                        ),
-                      );
-                    } else {
-                      return const SizedBox.shrink();
-                    }
-                  },
-                );
-              } else {
-                return const Center(
-                  child: Text(
-                    'No Comment',
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
+    if (hikeId == null || hikeId.isEmpty) {
+      return const Center(child: Text('No hike id available.'));
+    }
+
+    return Column(
+      children: [
+        // Add comment UI
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _commentController,
+                minLines: 1,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Add a comment',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Text('Rating'),
+                  Expanded(
+                    child: Slider(
+                      value: _rating,
+                      min: 1,
+                      max: 5,
+                      divisions: 8,
+                      label: _rating.toStringAsFixed(1),
+                      onChanged: (v) => setState(() => _rating = v),
+                    ),
                   ),
-                );
+                  SizedBox(
+                    width: 44,
+                    child: Text(_rating.toStringAsFixed(1)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ElevatedButton(
+                onPressed: _saving ? null : _addComment,
+                child: _saving
+                    ? const SizedBox(
+                        height: 16,
+                        width: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Post Comment'),
+              ),
+            ],
+          ),
+        ),
+
+        const Divider(height: 1),
+
+        // Existing comments list
+        Expanded(
+          child: StreamBuilder<List<Comment>>(
+            stream: _mHikeService.commentsForHike(hikeId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
               }
-            default:
-              return const Center(child: CircularProgressIndicator());
-          }
-        },
-      ),
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final comments = snapshot.data!;
+              if (comments.isEmpty) {
+                return const Center(child: Text('No comments yet.'));
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemCount: comments.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 10),
+                itemBuilder: (context, i) {
+                  final c = comments[i];
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          c.userEmail,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
+                        ),
+                        const SizedBox(height: 4),
+                        Text('Rating: ${c.rating.toStringAsFixed(1)}'),
+                        const SizedBox(height: 6),
+                        Text(c.text),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

@@ -1,323 +1,190 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/hike.dart';
 import 'package:mhike/services/crud/model/observation.dart';
 
 class ObservationTab extends StatefulWidget {
   final Hike hike;
-  const ObservationTab({
-    super.key,
-    required this.hike,
-  });
+  const ObservationTab({super.key, required this.hike});
 
   @override
   State<ObservationTab> createState() => _ObservationTabState();
 }
 
 class _ObservationTabState extends State<ObservationTab> {
-  late final MHikeService _mHikeService;
-  late final TextEditingController _observationTitleController;
-  late final TextEditingController _observationDetailController;
+  final MHikeService _mHikeService = MHikeService();
 
-  // declare a GlobalKey
-  final _formKey = GlobalKey<FormState>();
-
-  final observationsCategory = [
-    "Sightings of animals",
-    "Types of vegetation",
-    "Weather conditions",
-    "Trails conditions",
-    "Other"
-  ];
-  String _selectedObservationsCategory = "Sightings of animals";
-
-  @override
-  void initState() {
-    _mHikeService = MHikeService();
-    _observationTitleController = TextEditingController();
-    _observationDetailController = TextEditingController();
-    super.initState();
-  }
+  final _title = TextEditingController();
+  final _category = TextEditingController();
+  final _detail = TextEditingController();
+  bool _saving = false;
 
   @override
   void dispose() {
-    _observationTitleController.dispose();
-    _observationDetailController.dispose();
+    _title.dispose();
+    _category.dispose();
+    _detail.dispose();
     super.dispose();
   }
 
-  Future addNewObservation() async {
-    // get form details
-    final observationTitle = _observationTitleController.text;
-    final observationCategory = _selectedObservationsCategory;
-    final observationDetail = _observationDetailController.text;
-    final dateTime = DateTime.now();
+  Future<void> _addObservation() async {
+    final hikeId = widget.hike.id;
+    if (hikeId == null || hikeId.isEmpty) return;
 
-    // create new hike object
-    Observation newObservation = Observation(
-      hikeId: widget.hike.id!,
-      observationTitle: observationTitle,
-      observationCategory: observationCategory,
-      observationDetail: observationDetail,
-      dateTime: dateTime,
-    );
+    final title = _title.text.trim();
+    if (title.isEmpty) return;
 
-    // add observation
-    _mHikeService.addObservation(
-      hike: widget.hike,
-      newObservation: newObservation,
-    );
+    setState(() => _saving = true);
+
+    try {
+      final obs = Observation(
+        hikeId: hikeId,
+        title: title,
+        category: _category.text.trim(),
+        detail: _detail.text.trim(),
+        dateTime: DateTime.now(),
+      );
+
+      await _mHikeService.addObservation(
+        hikeId: hikeId,
+        observation: obs,
+      );
+
+      if (!mounted) return;
+      _title.clear();
+      _category.clear();
+      _detail.clear();
+      FocusScope.of(context).unfocus();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: StreamBuilder(
-        stream: _mHikeService.allObservations,
-        builder: (context, snapshot) {
-          switch (snapshot.connectionState) {
-            case ConnectionState.waiting:
-            case ConnectionState.active:
-              if (snapshot.hasData) {
-                final allObservations = snapshot.data as List<Observation>;
-                final hikeObservations = allObservations
-                    .where(
-                        (observations) => observations.hikeId == widget.hike.id)
-                    .toList();
-                return ListView.separated(
-                  padding: EdgeInsets.zero,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: hikeObservations.length + 1,
-                  separatorBuilder: (context, index) => const Divider(
-                    height: 12,
-                    color: Colors.transparent,
-                  ),
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return Container(
-                        padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-                        decoration: BoxDecoration(
-                          color: const Color.fromARGB(255, 55, 59, 87),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Form(
-                          key: _formKey,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              TextFormField(
-                                controller: _observationTitleController,
-                                keyboardType: TextInputType.text,
-                                maxLines: 1,
-                                decoration: InputDecoration(
-                                  fillColor: Colors.white12,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 20,
-                                  ),
-                                  hintText: 'Observation',
-                                  border: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  filled: true,
-                                ),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty) {
-                                    return 'Can\'t be empty';
-                                  }
-                                  return null;
-                                },
-                              ),
-                              const Divider(
-                                color: Colors.transparent,
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 22,
-                                  vertical: 6,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white12,
-                                  borderRadius: BorderRadius.circular(22),
-                                ),
-                                child: DropdownButtonHideUnderline(
-                                  child: DropdownButtonFormField(
-                                    borderRadius: BorderRadius.circular(22),
-                                    dropdownColor: const Color(0xFF4f536b),
-                                    isExpanded: true,
-                                    value: _selectedObservationsCategory,
-                                    items: observationsCategory
-                                        .map(buildMenuItem)
-                                        .toList(),
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedObservationsCategory = value;
-                                      });
-                                    },
-                                    validator: (value) {
-                                      if (value == null || value.isEmpty) {
-                                        return 'Can\'t be empty';
-                                      }
-                                      return null;
-                                    },
-                                  ),
-                                ),
-                              ),
-                              const Divider(
-                                color: Colors.transparent,
-                              ),
-                              TextFormField(
-                                controller: _observationDetailController,
-                                keyboardType: TextInputType.text,
-                                maxLines: 3,
-                                decoration: InputDecoration(
-                                  fillColor: Colors.white12,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 24,
-                                    vertical: 20,
-                                  ),
-                                  hintText: 'Detail',
-                                  border: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderSide:
-                                        Divider.createBorderSide(context),
-                                    borderRadius: BorderRadius.circular(22.0),
-                                  ),
-                                  filled: true,
-                                ),
-                              ),
-                              const Divider(
-                                color: Colors.transparent,
-                              ),
-                              ElevatedButton(
-                                onPressed: () {
-                                  if (_formKey.currentState!.validate()) {
-                                    _formKey.currentState!.save();
-                                    addNewObservation();
-                                  }
-                                },
-                                style: ElevatedButton.styleFrom(
-                                  minimumSize: const Size(
-                                    double.infinity,
-                                    56,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(18),
-                                  ),
-                                  backgroundColor: const Color(0xff282b41),
-                                ),
-                                child: const Text(
-                                  'Add',
-                                  style: TextStyle(fontSize: 16),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    }
-                    final observation = hikeObservations[index - 1];
-                    if (observation.hikeId == widget.hike.id) {
-                      return Container(
-                        padding: const EdgeInsets.fromLTRB(22, 16, 22, 16),
-                        decoration: BoxDecoration(
-                          color: const Color.fromARGB(255, 55, 59, 87),
-                          borderRadius: BorderRadius.circular(22),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+    final hikeId = widget.hike.id;
+    if (hikeId == null) {
+      return const Center(child: Text('Missing hike id'));
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<List<Observation>>(
+            stream: _mHikeService.observationsForHike(hikeId),
+            builder: (context, snapshot) {
+              if (snapshot.hasError) {
+                return Center(child: Text('Error: ${snapshot.error}'));
+              }
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              final observations = snapshot.data!;
+              if (observations.isEmpty) {
+                return const Center(child: Text('No observations yet'));
+              }
+
+              return ListView.separated(
+                padding: const EdgeInsets.all(12),
+                itemCount: observations.length,
+                separatorBuilder: (_, __) => const Divider(height: 16),
+                itemBuilder: (context, index) {
+                  final o = observations[index];
+                  return Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: const Color.fromARGB(255, 55, 59, 87),
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
                           children: [
-                            Text(
-                              observation.observationTitle,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            const Divider(
-                              color: Colors.transparent,
-                              height: 10,
-                            ),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8.5,
-                                vertical: 5,
-                              ),
-                              height: 24,
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                color: Colors.white,
-                              ),
+                            Expanded(
                               child: Text(
-                                observation.observationCategory,
+                                o.title,
                                 style: const TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w600,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
                             ),
-                            const Divider(
-                              color: Colors.transparent,
-                            ),
+                            const SizedBox(width: 8),
                             Text(
-                              observation.observationDetail,
-                              style: const TextStyle(fontSize: 16),
+                              DateFormat('y-MM-dd').format(o.dateTime),
+                              style: const TextStyle(color: Colors.grey),
                             ),
                           ],
                         ),
-                      );
-                    } else {
-                      return const SizedBox.shrink();
-                    }
-                  },
-                );
-              } else {
-                return const Center(
-                  child: Text(
-                    'No Observation',
-                    style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
-                  ),
-                );
-              }
-            default:
-              return const Center(child: CircularProgressIndicator());
-          }
-        },
-      ),
+                        if (o.category.trim().isNotEmpty) ...[
+                          const SizedBox(height: 6),
+                          Text(
+                            o.category,
+                            style: const TextStyle(color: Colors.white70),
+                          ),
+                        ],
+                        if (o.detail.trim().isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(o.detail),
+                        ],
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: const Color(0xff282b41),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TextField(
+                controller: _title,
+                decoration: const InputDecoration(
+                  hintText: 'Title (required)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _category,
+                decoration: const InputDecoration(
+                  hintText: 'Category (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                controller: _detail,
+                minLines: 1,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  hintText: 'Detail (optional)',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 10),
+              ElevatedButton(
+                onPressed: _saving ? null : _addObservation,
+                child: _saving
+                    ? const SizedBox(
+                        height: 18,
+                        width: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Add Observation'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
-}
-
-DropdownMenuItem buildMenuItem(String item) {
-  return DropdownMenuItem(
-    value: item,
-    child: Text(
-      item,
-    ),
-  );
 }

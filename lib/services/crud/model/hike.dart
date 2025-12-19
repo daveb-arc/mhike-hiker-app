@@ -1,76 +1,123 @@
-// Hike model class
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:flutter/material.dart';
-import 'package:mhike/services/crud/model/model_constants.dart';
-
-@immutable
 class Hike {
-  final int? id;
+  final String? id;
+
+  // owner
+  final String userId;
   final String userEmail;
-  final String coverImage;
+
+  // content
+  final String coverImage; // base64 string
   final String title;
-  final DateTime dateTime;
-  final String difficultyLevel;
-  final bool parkingAvailability;
   final String location;
   final double length;
   final String estimatedTime;
-  final String? description;
+  final String description;
+
+  // metadata
+  final bool parking;
+  final String difficulty;
+  final DateTime date;
+
+  // used by home "Popular" filter: (h.popularityIndex ?? 999999) < 10
   final int? popularityIndex;
 
   const Hike({
     this.id,
+    required this.userId,
     required this.userEmail,
     required this.coverImage,
     required this.title,
-    required this.dateTime,
-    required this.difficultyLevel,
-    required this.parkingAvailability,
-    required this.length,
     required this.location,
+    required this.length,
     required this.estimatedTime,
-    this.description,
-    this.popularityIndex = 0,
+    required this.description,
+    required this.parking,
+    required this.difficulty,
+    required this.date,
+    this.popularityIndex,
   });
 
-  // A Hike.fromJson() constructor, to crate a new Hike instance from a map structure.
-  Hike.fromJson(Map<String, Object?> map)
-      : id = map[idColumn] as int,
-        userEmail = map[userEmailColumn] as String,
-        coverImage = map[coverImageColumn] as String,
-        title = map[titleColumn] as String,
-        dateTime = DateTime.parse(map[dateTimeColumn] as String),
-        difficultyLevel = map[difficultyLevelColumn] as String,
-        parkingAvailability = map[parkingAvailabilityColumn] == 1,
-        length = map[lengthColumn] as double,
-        location = map[locationColumn] as String,
-        estimatedTime = map[estimatedTimeColumn] as String,
-        description = map[descriptionColumn] as String,
-        popularityIndex = map[popularityIndexColumn] as int;
+  Hike copyWith({
+    String? id,
+    String? userId,
+    String? userEmail,
+    String? coverImage,
+    String? title,
+    String? location,
+    double? length,
+    String? estimatedTime,
+    String? description,
+    bool? parking,
+    String? difficulty,
+    DateTime? date,
+    int? popularityIndex,
+  }) {
+    return Hike(
+      id: id ?? this.id,
+      userId: userId ?? this.userId,
+      userEmail: userEmail ?? this.userEmail,
+      coverImage: coverImage ?? this.coverImage,
+      title: title ?? this.title,
+      location: location ?? this.location,
+      length: length ?? this.length,
+      estimatedTime: estimatedTime ?? this.estimatedTime,
+      description: description ?? this.description,
+      parking: parking ?? this.parking,
+      difficulty: difficulty ?? this.difficulty,
+      date: date ?? this.date,
+      popularityIndex: popularityIndex ?? this.popularityIndex,
+    );
+  }
 
-  // A toJson() method, which converts a Hike instance into a map.
-  Map<String, Object?> toJson() => {
-        idColumn: id,
-        userEmailColumn: userEmail,
-        coverImageColumn: coverImage,
-        titleColumn: title,
-        dateTimeColumn: dateTime.toIso8601String(),
-        difficultyLevelColumn: difficultyLevel,
-        parkingAvailabilityColumn: parkingAvailability ? 1 : 0,
-        lengthColumn: length,
-        locationColumn: location,
-        estimatedTimeColumn: estimatedTime,
-        descriptionColumn: description,
-        popularityIndexColumn: popularityIndex,
-      };
+  Map<String, dynamic> toMap() {
+    return {
+      'userId': userId,
+      'userEmail': userEmail,
+      'coverImage': coverImage,
+      'title': title,
+      'location': location,
+      'length': length,
+      'estimatedTime': estimatedTime,
+      'description': description,
+      'parking': parking,
+      'difficulty': difficulty,
+      'date': Timestamp.fromDate(date),
+      'popularityIndex': popularityIndex,
+      'createdAt': FieldValue.serverTimestamp(),
+    };
+  }
 
-  @override
-  String toString() =>
-      'Hike, ID = $id, userEmail = $userEmail, title =$title, popularity index =$popularityIndex';
+  factory Hike.fromDoc(DocumentSnapshot doc) {
+    final data = (doc.data() as Map<String, dynamic>?) ?? {};
 
-  @override
-  bool operator ==(covariant Hike other) => id == other.id;
+    DateTime dt;
+    final rawDate = data['date'];
+    if (rawDate is Timestamp) {
+      dt = rawDate.toDate();
+    } else {
+      dt = DateTime.now();
+    }
 
-  @override
-  int get hashCode => id.hashCode;
+    return Hike(
+      id: doc.id,
+      userId: (data['userId'] ?? '') as String,
+      userEmail: (data['userEmail'] ?? '') as String,
+      coverImage: (data['coverImage'] ?? '') as String,
+      title: (data['title'] ?? '') as String,
+      location: (data['location'] ?? '') as String,
+      length: (data['length'] ?? 0).toDouble(),
+      estimatedTime: (data['estimatedTime'] ?? '') as String,
+      description: (data['description'] ?? '') as String,
+      parking: (data['parking'] ?? false) as bool,
+      difficulty: (data['difficulty'] ?? '') as String,
+      date: dt,
+      popularityIndex: (data['popularityIndex'] is int)
+          ? data['popularityIndex'] as int
+          : (data['popularityIndex'] is num)
+              ? (data['popularityIndex'] as num).toInt()
+              : null,
+    );
+  }
 }

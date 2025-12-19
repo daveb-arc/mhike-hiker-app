@@ -1,14 +1,13 @@
-// User model class
-
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
-import 'package:mhike/services/crud/model/model_constants.dart';
 
 @immutable
 class User {
-  final int? id;
+  final String? id; // Firestore doc id or Firebase uid
   final String email;
   final String username;
   final String fullName;
+
   const User({
     this.id,
     required this.email,
@@ -16,27 +15,35 @@ class User {
     required this.fullName,
   });
 
-   // A User.fromJson() constructor, to crate a new User instance from a map structure.
-  User.fromRow(Map<String, Object?> map)
-      : id = map[idColumn] as int,
-        email = map[emailColumn] as String,
-        username = map[usernameColumn] as String,
-        fullName = map[fullNameColumn] as String;
+  factory User.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
+    final data = doc.data() ?? {};
+    return User(
+      id: doc.id,
+      email: (data['email'] ?? '') as String,
+      username: (data['username'] ?? '') as String,
+      fullName: (data['fullName'] ?? '') as String,
+    );
+  }
 
-  // A toJson() method, which converts a User Observation into a map.
-  Map<String, Object?> toJson() => {
-        idColumn: id,
-        emailColumn: email,
-        usernameColumn: username,
-        fullNameColumn: fullName,
+  Map<String, dynamic> toFirestore({required String uid}) => {
+        'uid': uid,
+        'email': email,
+        'username': username,
+        'fullName': fullName,
+        'updatedAt': FieldValue.serverTimestamp(),
       };
 
-  @override
-  String toString() => 'User, ID = $id, email = $email';
-
-  @override
-  bool operator ==(covariant User other) => id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
+  User copyWith({
+    String? id,
+    String? email,
+    String? username,
+    String? fullName,
+  }) {
+    return User(
+      id: id ?? this.id,
+      email: email ?? this.email,
+      username: username ?? this.username,
+      fullName: fullName ?? this.fullName,
+    );
+  }
 }

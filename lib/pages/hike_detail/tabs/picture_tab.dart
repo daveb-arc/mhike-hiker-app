@@ -1,12 +1,15 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/hike.dart';
 import 'package:mhike/services/crud/model/picture.dart';
-import 'package:mhike/utilities/utility.dart';
 
 class PictureTab extends StatefulWidget {
   final Hike hike;
+
   const PictureTab({super.key, required this.hike});
 
   @override
@@ -14,99 +17,75 @@ class PictureTab extends StatefulWidget {
 }
 
 class _PictureTabState extends State<PictureTab> {
-  late final MHikeService _mHikeService;
+  final MHikeService _mHikeService = MHikeService();
+  final ImagePicker _picker = ImagePicker();
 
-  @override
-  void initState() {
-    _mHikeService = MHikeService();
-    super.initState();
-  }
+  Future<void> _addPicture() async {
+    final hikeId = widget.hike.id;
+    if (hikeId == null) return;
 
-  Future addNewPicture() async {
-    
-    final dateTime = DateTime.now();
+    final XFile? picked =
+        await _picker.pickImage(source: ImageSource.gallery);
+    if (picked == null) return;
 
-    // pick image from gallery
-    ImagePicker().pickImage(source: ImageSource.gallery).then((imgFile) async {
-      // convert image to string
-      String hikePicture = Utility.base64String(await imgFile!.readAsBytes());
+    final Uint8List bytes = await picked.readAsBytes();
+    final String base64 = base64Encode(bytes);
 
-      // create a new object
-      Picture newPicture = Picture(
-        hikeId: widget.hike.id!,
-        hikePicture: hikePicture,
-        dateTime: dateTime,
-      );
+    final Picture pic = Picture(
+      id: '', // Firestore will assign this
+      base64: base64,
+      time: DateTime.now(),
+    );
 
-      // insert image
-      _mHikeService.addPicture(
-        hike: widget.hike,
-        newPicture: newPicture,
-      );
-    });
+    await _mHikeService.addPicture(
+      hikeId: hikeId,
+      picture: pic,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: StreamBuilder(
-        stream: _mHikeService.allPictures,
-        builder: (context, snapshot) {
-          switch (snapshot.connectionState) {
-            case ConnectionState.waiting:
-            case ConnectionState.active:
-              if (snapshot.hasData) {
-                final allPictures = snapshot.data as List<Picture>;
-                final hikePictures = allPictures
-                    .where((pictures) => pictures.hikeId == widget.hike.id)
-                    .toList();
-                return GridView.builder(
-                  physics: const NeverScrollableScrollPhysics(),
-                  padding: EdgeInsets.zero,
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3,
-                    crossAxisSpacing: 8,
-                    mainAxisSpacing: 8,
-                  ),
-                  itemCount: hikePictures.length + 1,
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return InkWell(
-                        child: Container(
-                          padding: const EdgeInsets.all(16),
-                          decoration: BoxDecoration(
-                            color: const Color.fromARGB(255, 55, 59, 87),
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                          child: Image.asset(
-                            'assets/icons/add-image.png',
-                            color: Colors.white12,
-                          ),
-                        ),
-                        onTap: () {
-                          addNewPicture();
-                        },
-                      );
-                    }
-                    final picture = hikePictures[index - 1];
-                    return ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: Image.memory(
-                        Utility.dataFromBase64String(picture.hikePicture),
-                        fit: BoxFit.cover,
-                      ),
-                    );
-                  },
-                );
-              } else {
-                return const CircularProgressIndicator();
+    return Column(
+      children: [
+        Expanded(
+          child: StreamBuilder<List<Picture>>(
+            stream: _mHikeService.picturesForHike(widget.hike.id!),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
               }
-            default:
-              return const CircularProgressIndicator();
-          }
-        },
-      ),
+
+              final pictures = snapshot.data ?? [];
+
+              if (pictures.isEmpty) {
+                return const Center(child: Text('No pictures yet'));
+              }
+
+              return GridView.builder(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                ),
+                itemCount: pictures.length,
+                itemBuilder: (context, index) {
+                  final pic = pictures[index];
+                  return Image.memory(
+                    base64Decode(pic.base64),
+                    fit: BoxFit.cover,
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(8),
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.add_a_photo),
+            label: const Text('Add Picture'),
+            onPressed: _addPicture,
+          ),
+        ),
+      ],
     );
   }
 }

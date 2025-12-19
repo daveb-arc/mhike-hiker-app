@@ -1,52 +1,46 @@
-// Observation model class
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-import 'package:flutter/material.dart';
-import 'package:mhike/services/crud/model/model_constants.dart';
-
-@immutable
 class Observation {
-  final int? id;
-  final int hikeId;
-  final String observationTitle;
-  final String observationCategory;
-  final String observationDetail;
+  final String? id;
+  final String hikeId;
+  final String title;
+  final String category;
+  final String detail;
   final DateTime dateTime;
 
-  const Observation({
+  Observation({
     this.id,
     required this.hikeId,
-    required this.observationTitle,
-    required this.observationCategory,
-    required this.observationDetail,
+    required this.title,
+    required this.category,
+    required this.detail,
     required this.dateTime,
   });
 
-  // A Observation.fromJson() constructor, to crate a new Observation instance from a map structure.
-  Observation.fromJson(Map<String, Object?> map)
-      : id = map[idColumn] as int,
-        hikeId = map[hikeIdColumn] as int,
-        observationTitle = map[observationTitleColumn] as String,
-        observationCategory = map[observationCategoryColumn] as String,
-        observationDetail = map[observationDetailColumn] as String,
-        dateTime = DateTime.parse(map[dateTimeColumn] as String);
+  factory Observation.fromFirestore(
+    DocumentSnapshot<Map<String, dynamic>> doc,
+  ) {
+    final data = doc.data() ?? {};
+    final ts = data['dateTime'];
+    final dt = ts is Timestamp ? ts.toDate() : DateTime.now();
 
-  // A toJson() method, which converts a Hike Observation into a map.
-  Map<String, Object?> toJson() => {
-        idColumn: id,
-        hikeIdColumn: hikeId,
-        observationTitleColumn: observationTitle,
-        observationCategoryColumn: observationCategory,
-        observationDetailColumn: observationDetail,
-        dateTimeColumn: dateTime.toIso8601String(),
-      };
+    return Observation(
+      id: doc.id,
+      hikeId: (data['hikeId'] ?? '') as String,
+      title: (data['title'] ?? '') as String,
+      category: (data['category'] ?? '') as String,
+      detail: (data['detail'] ?? '') as String,
+      dateTime: dt,
+    );
+  }
 
-  @override
-  String toString() =>
-      'Observation, ID = $id, observation title = $observationTitle, observation category = $observationCategory';
-
-  @override
-  bool operator ==(covariant Observation other) => id == other.id;
-
-  @override
-  int get hashCode => id.hashCode;
+  Map<String, dynamic> toFirestore({required String hikeId}) {
+    return {
+      'hikeId': hikeId,
+      'title': title,
+      'category': category,
+      'detail': detail,
+      'dateTime': Timestamp.fromDate(dateTime),
+    };
+  }
 }

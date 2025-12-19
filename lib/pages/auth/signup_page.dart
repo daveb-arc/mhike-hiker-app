@@ -5,10 +5,11 @@ import 'package:mhike/core/text_form_field_input.dart';
 import 'package:mhike/services/auth/auth_exceptions.dart';
 import 'package:mhike/services/auth/auth_service.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
-import 'package:mhike/services/crud/model/user.dart';
+import 'package:mhike/services/crud/model/user.dart' as mhike_user;
 
 class SignupPage extends StatefulWidget {
   const SignupPage({Key? key}) : super(key: key);
+
   @override
   State<SignupPage> createState() => _SignupPageState();
 }
@@ -23,7 +24,6 @@ class _SignupPageState extends State<SignupPage> {
   late final TextEditingController _fullNameController;
   late final TextEditingController _passwordController;
 
-  // declare a GlobalKey
   final _formKey = GlobalKey<FormState>();
 
   @override
@@ -46,43 +46,66 @@ class _SignupPageState extends State<SignupPage> {
     super.dispose();
   }
 
-  Future createNewUser() async {
-    // get user inpute
-    final email = _emailController.text;
-    final username = _usernameController.text;
-    final fullName = _fullNameController.text;
+  Future<void> _showError(String message) async {
+    if (!mounted) return;
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign up failed'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> createNewUser() async {
+    final email = _emailController.text.trim();
+    final username = _usernameController.text.trim();
+    final fullName = _fullNameController.text.trim();
     final password = _passwordController.text;
 
-    // signup
-    // create new user object
-    User newUser = User(
-      email: email,
-      username: username,
-      fullName: fullName,
-    );
-
-    // add user to the databse
-    _mHikeService.createUser(user: newUser);
-
-    // create new firebase user or throw Exception
     try {
-      await AuthService.firebase().createUser(
+      // 1) Create Firebase Auth user
+      await AuthService.firebase().createUser(email: email, password: password);
+
+      // 2) Get uid
+      final authUser = AuthService.firebase().currentUser;
+      final uid = authUser?.id;
+      if (uid == null || uid.isEmpty) {
+        await _showError('Could not determine user id after signup.');
+        return;
+      }
+
+      // 3) Create Firestore user doc
+      final newUser = mhike_user.User(
+        id: uid,
         email: email,
-        password: password,
+        username: username,
+        fullName: fullName,
       );
+
+      await _mHikeService.createUser(userId: uid, user: newUser);
+
       if (!mounted) return;
       Navigator.of(context).pushNamedAndRemoveUntil(
         homeRoute,
         (Route<dynamic> route) => false,
       );
     } on WeekPasswordException {
-      'Weak password';
+      await _showError('Weak password. Use at least 8 characters.');
     } on EmailAlreadyInUseException {
-      'Email already registered';
+      await _showError('That email is already registered.');
     } on InvalidEmailException {
-      'Invalid email';
+      await _showError('Invalid email address.');
     } on GenericAuthException {
-      'Failed to register';
+      await _showError('Failed to register. Please try again.');
+    } catch (e) {
+      await _showError('Unexpected error: $e');
     }
   }
 
@@ -115,17 +138,12 @@ class _SignupPageState extends State<SignupPage> {
                         fontWeight: FontWeight.w700,
                       ),
                       children: [
-                        TextSpan(
-                          text: 'account',
-                        ),
+                        TextSpan(text: 'account'),
                       ],
                     ),
                   ),
                 ),
-                const Divider(
-                  height: 14,
-                  color: Colors.transparent,
-                ),
+                const Divider(height: 14, color: Colors.transparent),
                 Form(
                   key: _formKey,
                   child: Column(
@@ -135,97 +153,65 @@ class _SignupPageState extends State<SignupPage> {
                         textInputType: TextInputType.emailAddress,
                         hintText: 'Email address',
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Can\'t be empty';
-                          }
+                          if (value == null || value.isEmpty) return 'Can\'t be empty';
                           return null;
                         },
                       ),
-                      const Divider(
-                        height: 14,
-                        color: Colors.transparent,
-                      ),
+                      const Divider(height: 14, color: Colors.transparent),
                       TextFormFieldInput(
                         textEditingController: _usernameController,
                         textInputType: TextInputType.text,
                         hintText: 'Username',
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Can\'t be empty';
-                          }
+                          if (value == null || value.isEmpty) return 'Can\'t be empty';
                           return null;
                         },
                       ),
-                      const Divider(
-                        height: 14,
-                        color: Colors.transparent,
-                      ),
+                      const Divider(height: 14, color: Colors.transparent),
                       TextFormFieldInput(
                         textEditingController: _fullNameController,
                         textInputType: TextInputType.name,
                         hintText: 'Full name',
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Can\'t be empty';
-                          }
+                          if (value == null || value.isEmpty) return 'Can\'t be empty';
                           return null;
                         },
                       ),
-                      const Divider(
-                        height: 14,
-                        color: Colors.transparent,
-                      ),
+                      const Divider(height: 14, color: Colors.transparent),
                       TextFormFieldInput(
                         textEditingController: _passwordController,
                         textInputType: TextInputType.text,
                         hintText: 'Password',
                         isPassword: true,
                         validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Can\'t be empty';
-                          }
-                          if (value.length < 8) {
-                            return 'Too short';
-                          }
+                          if (value == null || value.isEmpty) return 'Can\'t be empty';
+                          if (value.length < 8) return 'Too short';
                           return null;
                         },
                       ),
-                      const Divider(
-                        height: 14,
-                        color: Colors.transparent,
-                      ),
+                      const Divider(height: 14, color: Colors.transparent),
                       ElevatedButton(
                         onPressed: () async {
                           if (_formKey.currentState!.validate()) {
                             _formKey.currentState!.save();
-                            createNewUser();
+                            await createNewUser();
                           }
 
-                          setState(() {
-                            _containerHeight = 640;
-                          });
+                          setState(() => _containerHeight = 640);
                         },
                         style: ElevatedButton.styleFrom(
                           backgroundColor: const Color(0xff282b41),
-                          minimumSize: const Size(
-                            double.infinity,
-                            56,
-                          ),
+                          minimumSize: const Size(double.infinity, 56),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(18),
                           ),
                         ),
-                        child: const Text(
-                          'Sign Up',
-                          style: TextStyle(fontSize: 16),
-                        ),
+                        child: const Text('Sign Up', style: TextStyle(fontSize: 16)),
                       ),
                     ],
                   ),
                 ),
-                const Divider(
-                  height: 14,
-                ),
+                const Divider(height: 14),
                 RichText(
                   text: TextSpan(
                     text: 'Already have an account? ',

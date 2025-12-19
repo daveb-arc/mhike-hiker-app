@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mhike/constants/routes.dart';
-import 'package:mhike/pages/add_hike_page.dart';
 import 'package:mhike/pages/home/hike_list_view.dart';
 import 'package:mhike/services/auth/auth_service.dart';
 import 'package:mhike/services/crud/m_hike_service.dart';
 import 'package:mhike/services/crud/model/hike.dart';
 import 'package:mhike/services/crud/model/user.dart';
-import 'package:mhike/utilities/utility.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -17,28 +15,18 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  late final MHikeService _mHikeService;
-  String get email => AuthService.firebase().currentUser!.email;
-  late Iterable<Hike> hikes;
+  final MHikeService _mHikeService = MHikeService();
+  late final PageController pageController;
 
-  int allHikesCount = 3;
-  int popularHikesCount = 3;
-
-  final PageController pageController = PageController(viewportFraction: 0.86);
   int currentPage = 0;
-  double height = 435.0;
 
   @override
   void initState() {
-    _mHikeService = MHikeService();
+    pageController = PageController(viewportFraction: 0.73);
     pageController.addListener(() {
-      int position = pageController.page!.round();
-      if (currentPage != position) {
-        {
-          setState(() {
-            currentPage = position;
-          });
-        }
+      final page = pageController.page?.round() ?? 0;
+      if (page != currentPage) {
+        setState(() => currentPage = page);
       }
     });
     super.initState();
@@ -46,40 +34,28 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
+    pageController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final authUser = AuthService.firebase().currentUser;
+    final email = authUser?.email ?? '';
+    final uid = authUser?.id ?? '';
+
     return Scaffold(
       backgroundColor: const Color(0xff282b41),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
         elevation: 0,
-        centerTitle: false,
-        leadingWidth: 90,
-        leading: Builder(builder: (context) {
-          return IconButton(
-            onPressed: (() {
-              Scaffold.of(context).openDrawer();
-            }),
-            icon: Image.asset(
-              'assets/menu.png',
-              color: Colors.white,
-              width: 21,
-            ),
-          );
-        }),
+        backgroundColor: const Color(0xff282b41),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 14.0),
-            // search icon
+            padding: const EdgeInsets.only(right: 16.0),
             child: IconButton(
-              onPressed: (() {
-                Navigator.of(context).pushNamed(
-                  searchRoute,
-                );
-              }),
+              onPressed: () {
+                Navigator.of(context).pushNamed(searchRoute);
+              },
               icon: Image.asset(
                 'assets/search.png',
                 color: Colors.white,
@@ -89,7 +65,6 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      // app drawer
       drawer: ClipRRect(
         borderRadius: const BorderRadius.horizontal(right: Radius.circular(50)),
         child: Drawer(
@@ -105,130 +80,80 @@ class _HomePageState extends State<HomePage> {
                     'mhike',
                     style: GoogleFonts.dancingScript(
                       fontSize: 82.0,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white12,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
                     ),
                   ),
                 ),
               ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white12,
-                    borderRadius: BorderRadius.circular(22),
-                  ),
-                  child: FutureBuilder(
-                      future: _mHikeService.getUser(null, email),
-                      builder: (context, snapshot) {
-                        switch (snapshot.connectionState) {
-                          case ConnectionState.done:
-                            if (snapshot.hasData) {
-                              final user = snapshot.data as User;
-                              return Row(
-                                mainAxisAlignment: MainAxisAlignment.start,
-                                children: [
-                                  const CircleAvatar(
-                                    radius: 28,
-                                    backgroundImage:
-                                        AssetImage('assets/images/pexels3.jpg'),
-                                  ),
-                                  const VerticalDivider(),
-                                  Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        user.fullName,
-                                        style: const TextStyle(
-                                          fontSize: 18,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                      Text(
-                                        '@${user.username}',
-                                        style: const TextStyle(
-                                            fontSize: 15,
-                                            color: Colors.grey,
-                                            fontWeight: FontWeight.w500),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              );
-                            } else {
-                              return const Text('User Not Found');
-                            }
-                          default:
-                            return const CircularProgressIndicator();
-                        }
-                      }),
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                leading: Image.asset(
-                  'assets/images/add-item.png',
-                  color: Colors.white,
-                  height: 29,
-                ),
-                title: const Text(
-                  'Add New Hike',
-                  style: TextStyle(fontSize: 16),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AddHikePage(),
-                    ),
-                  );
-                },
-              ),
-              ListTile(
-                leading: Image.asset(
-                  'assets/images/logout.png',
-                  color: Colors.white,
-                  height: 26,
-                ),
-                title: const Text(
-                  'Logout',
-                  style: TextStyle(
-                    fontSize: 16,
-                  ),
-                ),
-                onTap: () async {
-                  Navigator.pop(context);
-                  final logout = await logOutDialog(context);
-                  if (logout) {
-                    await AuthService.firebase().logout();
-                    if (!mounted) return;
-                    Navigator.of(context).pushNamedAndRemoveUntil(
-                      loginRoute,
-                      (_) => false,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                child: FutureBuilder<User?>(
+                  future: _mHikeService.getUserByUid(uid).then((u) async {
+                    // fallback (older flow) if user doc was created by email query
+                    return u ?? await _mHikeService.getUser(null, email);
+                  }),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState != ConnectionState.done) {
+                      return const SizedBox(height: 70);
+                    }
+                    final user = snapshot.data;
+                    if (user == null) {
+                      return const Text(
+                        'No profile found',
+                        style: TextStyle(color: Colors.white),
+                      );
+                    }
+
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        const CircleAvatar(
+                          radius: 28,
+                          backgroundImage:
+                              AssetImage('assets/images/pexels3.jpg'),
+                        ),
+                        const VerticalDivider(),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              user.fullName,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              '@${user.username}',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                color: Colors.white70,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     );
-                  }
+                  },
+                ),
+              ),
+              const SizedBox(height: 22),
+              ListTile(
+                title: const Text('Add Hike', style: TextStyle(color: Colors.white)),
+                leading: const Icon(Icons.add, color: Colors.white),
+                onTap: () {
+                  Navigator.of(context).pushNamed(addHikeRoute);
                 },
               ),
               ListTile(
-                leading: Image.asset(
-                  'assets/icons/reset.png',
-                  color: Colors.white,
-                  height: 26,
-                ),
-                title: const Text(
-                  'Reset',
-                  style: TextStyle(
-                    fontSize: 16,
-                  ),
-                ),
-                onTap: () {
-                  // clear database
-                  _mHikeService.deleteAllHikes();
-                  _mHikeService.deleteAllComments();
-                  _mHikeService.deleteAllPictures();
+                title: const Text('Logout', style: TextStyle(color: Colors.white)),
+                leading: const Icon(Icons.logout, color: Colors.white),
+                onTap: () async {
+                  await AuthService.firebase().logout();
+                  if (!mounted) return;
+                  Navigator.of(context).pushNamedAndRemoveUntil(loginRoute, (_) => false);
                 },
               ),
             ],
@@ -236,185 +161,87 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 26),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Popular',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 42,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: Image.asset(
-                          'assets/option.png',
-                          color: Colors.white,
-                          width: 24,
-                        ),
-                      )
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(110, 26),
-                          backgroundColor: Colors.red,
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                        ),
-                        onPressed: () {},
-                        child: const Text('Hikes'),
-                      ),
-                      const VerticalDivider(
-                        width: 10,
-                      ),
-                      Text(
-                        '$popularHikesCount Hikes',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+            Text(
+              'Popular',
+              style: GoogleFonts.montserrat(
+                fontSize: 38,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: SizedBox(
-                height: 400,
-                child: StreamBuilder(
-                  stream: _mHikeService.allHikes,
-                  builder: (context, snapshot) {
-                    switch (snapshot.connectionState) {
-                      case ConnectionState.waiting:
-                      case ConnectionState.active:
+            const SizedBox(height: 12),
 
-                        // get popular hike
-                        if (snapshot.hasData) {
-                          final allHikes = snapshot.data as List<Hike>;
-                          final popularHikes = allHikes
-                              .where(
-                                (hike) => hike.popularityIndex! < 10,
-                              )
-                              .toList();
+            // POPULAR CAROUSEL
+            SizedBox(
+              height: 400,
+              child: StreamBuilder<List<Hike>>(
+                stream: _mHikeService.allHikes,
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                          return PageView.builder(
-                            padEnds: false,
-                            controller: pageController,
-                            itemCount: allHikes.length,
-                            physics: const BouncingScrollPhysics(),
-                            itemBuilder: (context, index) {
-                              bool active = index == currentPage;
-                              return HikesCard(
-                                active: active,
-                                index: index,
-                                hike: popularHikes[index],
-                              );
-                            },
-                          );
-                        } else {
-                          return const Center(
-                              child: CircularProgressIndicator());
-                        }
-                      default:
-                        return const Center(child: CircularProgressIndicator());
-                    }
-                  },
-                ),
+                  final allHikes = snapshot.data!;
+                  final popularHikes = allHikes
+                      .where((h) => (h.popularityIndex ?? 999999) < 10)
+                      .toList();
+
+                  if (popularHikes.isEmpty) {
+                    return const Center(
+                      child: Text('No popular hikes yet',
+                          style: TextStyle(color: Colors.white70)),
+                    );
+                  }
+
+                  return PageView.builder(
+                    padEnds: false,
+                    controller: pageController,
+                    itemCount: popularHikes.length,
+                    itemBuilder: (context, index) {
+                      final active = index == currentPage;
+                      // Your existing card widget expects Hike; keep as-is
+                      return _PopularCardWrapper(
+                        active: active,
+                        hike: popularHikes[index],
+                      );
+                    },
+                  );
+                },
               ),
             ),
-            Padding(
-              padding: const EdgeInsets.only(
-                left: 26,
-                right: 26,
-                top: 18,
-                bottom: 10,
-              ),
-              child: Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'All Hikes',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 42,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () {},
-                        icon: Image.asset(
-                          'assets/option.png',
-                          color: Colors.white,
-                          width: 24,
-                        ),
-                      )
-                    ],
-                  ),
-                  Row(
-                    children: [
-                      ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          minimumSize: const Size(110, 26),
-                          backgroundColor: Colors.pink,
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(22),
-                          ),
-                        ),
-                        onPressed: () {},
-                        child: const Text('Least recent'),
-                      ),
-                      const VerticalDivider(
-                        width: 10,
-                      ),
-                      Text(
-                        '$allHikesCount+ Hikes',
-                        style: const TextStyle(
-                          color: Colors.blue,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+
+            const SizedBox(height: 28),
+
+            Text(
+              'All Hikes',
+              style: GoogleFonts.montserrat(
+                fontSize: 34,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
               ),
             ),
-            StreamBuilder(
+            const SizedBox(height: 12),
+
+            // ALL HIKES LIST
+            StreamBuilder<List<Hike>>(
               stream: _mHikeService.allHikes,
               builder: (context, snapshot) {
-                switch (snapshot.connectionState) {
-                  case ConnectionState.waiting:
-                  case ConnectionState.active:
-                    if (snapshot.hasData) {
-                      final allHikes = snapshot.data as List<Hike>;
-                      return HikeListView(
-                        hikes: allHikes,
-                        onDeleteHike: (hike) async {
-                          await _mHikeService.deleteHike(id: hike.id!);
-                        },
-                      );
-                    } else {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                  default:
-                    return const Center(child: CircularProgressIndicator());
+                if (!snapshot.hasData) {
+                  return const Center(child: CircularProgressIndicator());
                 }
+                final hikes = snapshot.data!;
+                return HikeListView(
+                  hikes: hikes,
+                  onDeleteHike: (hike) async {
+                    final id = hike.id;
+                    if (id == null) return;
+                    await _mHikeService.deleteHike(id: id);
+                  },
+                );
               },
             ),
           ],
@@ -424,178 +251,49 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class HikesCard extends StatelessWidget {
-  const HikesCard({
-    Key? key,
-    required this.active,
-    required this.index,
-    required this.hike,
-  }) : super(key: key);
-
+// Minimal wrapper so you don’t have to refactor your existing popular card widget.
+// Replace this with your existing widget if you already have one.
+class _PopularCardWrapper extends StatelessWidget {
   final bool active;
-  final int index;
   final Hike hike;
+
+  const _PopularCardWrapper({
+    required this.active,
+    required this.hike,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final double blur = active ? 16 : 0;
-    final double offset = active ? 4 : 0;
-    final double top = active ? 0 : 34;
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeOutQuint,
-      margin: EdgeInsets.only(
-        top: top,
-        bottom: 0,
-        right: 15.5,
-        left: active ? 24.0 : 0,
-      ),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(32),
-        color: const Color(0xFF424242),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: blur,
-            offset: Offset(0, offset),
+    // If you already had a popular card widget, use it here.
+    // For now, reuse HikeListView card patterns elsewhere, or keep your existing.
+    return Padding(
+      padding: const EdgeInsets.only(right: 16.0),
+      child: Opacity(
+        opacity: active ? 1.0 : 0.6,
+        child: Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            color: const Color.fromARGB(255, 55, 59, 87),
           ),
-        ],
-        image: DecorationImage(
-          fit: BoxFit.cover,
-          image: MemoryImage(Utility.dataFromBase64String(hike.coverImage)),
-        ),
-      ),
-      child: Stack(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(32),
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF424242).withOpacity(0.8),
-                  const Color(0xFF616161).withOpacity(0.2),
-                ],
-                begin: Alignment.bottomRight,
-                end: Alignment.topLeft,
-                tileMode: TileMode.clamp,
-                stops: const [0.3, 0.6],
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.only(
-                left: 24,
-                right: 16,
-                top: 10,
-              ),
-              height: 87,
-              decoration: const BoxDecoration(
-                color: Color(0xFF424242),
-                borderRadius: BorderRadius.only(
-                  bottomLeft: Radius.circular(32),
-                  bottomRight: Radius.circular(32),
-                ),
-              ),
-              child: Text(
-                hike.title,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 2,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            bottom: 84.75,
-            left: 0,
-            right: 0,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8.5,
-                    ),
-                    height: 24,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(hike.title,
+                  style: const TextStyle(
                       color: Colors.white,
-                    ),
-                    child: Row(
-                      children: [
-                        RichText(
-                          text: TextSpan(
-                            text: hike.difficultyLevel,
-                            style: const TextStyle(
-                              color: Color(0xFF424242),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            children: const [
-                              TextSpan(
-                                text: ' • ',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              TextSpan(text: '4.5 (12)'),
-                            ],
-                          ),
-                        ),
-                        const VerticalDivider(
-                          width: 4,
-                        ),
-                        Image.asset(
-                          'assets/star.png',
-                          height: 14,
-                        )
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                      fontSize: 18,
+                      fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              Text(hike.location,
+                  style: const TextStyle(color: Colors.white70)),
+              const Spacer(),
+              const Text('Tap a hike card in All Hikes for details',
+                  style: TextStyle(color: Colors.white38, fontSize: 12)),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
-}
-
-// logout dialog box
-Future<bool> logOutDialog(BuildContext context) {
-  return showDialog<bool>(
-    context: context,
-    builder: (context) {
-      return AlertDialog(
-        backgroundColor: const Color(0xff282b41),
-        title: const Text('Logout'),
-        content: const Text('do you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(false);
-            },
-            child: const Text('Cancle'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.of(context).pop(true);
-            },
-            child: const Text('Logout'),
-          ),
-        ],
-      );
-    },
-  ).then((value) => value ?? false);
 }

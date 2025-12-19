@@ -118,7 +118,7 @@ class HikeListView extends StatelessWidget {
                         children: [
                           RichText(
                             text: TextSpan(
-                              text: hike.difficultyLevel,
+                              text: hike.difficulty,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,
