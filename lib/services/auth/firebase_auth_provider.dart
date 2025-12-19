@@ -1,18 +1,13 @@
 import 'package:firebase_auth/firebase_auth.dart' as fb;
 import 'package:firebase_core/firebase_core.dart';
-import 'package:mhike/firebase_options.dart';
+import 'package:flutter/foundation.dart';
+
+import 'package:mhike/firebase/firebase_env.dart';
 import 'package:mhike/services/auth/auth_exceptions.dart';
 import 'package:mhike/services/auth/auth_provider.dart';
 import 'package:mhike/services/auth/auth_user.dart';
 
 class FirebaseAuthProvider implements AuthProvider {
-  @override
-  Future<void> initialize() async {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  }
-
   @override
   AuthUser? get currentUser {
     final user = fb.FirebaseAuth.instance.currentUser;
@@ -21,20 +16,42 @@ class FirebaseAuthProvider implements AuthProvider {
   }
 
   @override
+  Future<void> initialize() async {
+    await Firebase.initializeApp(
+      options: kIsWeb ? FirebaseEnv.web() : null,
+    );
+  }
+
+  @override
   Future<AuthUser?> createUser({
     required String email,
     required String password,
   }) async {
     try {
-      await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(
+      final credential =
+          await fb.FirebaseAuth.instance.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-      return currentUser;
+
+      final user = credential.user;
+      if (user == null) {
+        throw UserNotLoggedInException();
+      }
+
+      return AuthUser.fromFirebase(user);
     } on fb.FirebaseAuthException catch (e) {
-      if (e.code == 'weak-password') throw WeekPasswordException();
-      if (e.code == 'email-already-in-use') throw EmailAlreadyInUseException();
-      if (e.code == 'invalid-email') throw InvalidEmailException();
+      if (e.code == 'weak-password') {
+        // NOTE: your auth_exceptions.dart class is spelled "WeekPasswordException"
+        throw WeekPasswordException();
+      } else if (e.code == 'email-already-in-use') {
+        throw EmailAlreadyInUseException();
+      } else if (e.code == 'invalid-email') {
+        throw InvalidEmailException();
+      } else {
+        throw GenericAuthException();
+      }
+    } catch (_) {
       throw GenericAuthException();
     }
   }
@@ -45,14 +62,27 @@ class FirebaseAuthProvider implements AuthProvider {
     required String password,
   }) async {
     try {
-      await fb.FirebaseAuth.instance.signInWithEmailAndPassword(
+      final credential =
+          await fb.FirebaseAuth.instance.signInWithEmailAndPassword(
         email: email,
         password: password,
       );
-      return currentUser;
+
+      final user = credential.user;
+      if (user == null) {
+        throw UserNotLoggedInException();
+      }
+
+      return AuthUser.fromFirebase(user);
     } on fb.FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') throw UserNotFoundException();
-      if (e.code == 'wrong-password') throw WrongPasswordException();
+      if (e.code == 'user-not-found') {
+        throw UserNotFoundException();
+      } else if (e.code == 'wrong-password') {
+        throw WrongPasswordException();
+      } else {
+        throw GenericAuthException();
+      }
+    } catch (_) {
       throw GenericAuthException();
     }
   }

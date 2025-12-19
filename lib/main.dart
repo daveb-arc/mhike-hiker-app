@@ -25,7 +25,6 @@ Future<void> main() async {
   runZonedGuarded(() {
     runApp(const MyApp());
   }, (error, stack) {
-    // If something explodes before the first frame, you’ll still see it in console.
     debugPrint('🔥 Unhandled zone error: $error');
     debugPrint('$stack');
   });
@@ -41,7 +40,6 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: Colors.blue,
-        brightness: Brightness.dark,
       ),
       home: const _Bootstrapper(),
       routes: {
@@ -80,11 +78,8 @@ class _BootstrapperState extends State<_Bootstrapper> {
           FirebaseFirestore.instance.settings = const Settings(
             persistenceEnabled: true,
           );
-          // This can throw in some environments; swallow + continue.
-          await FirebaseFirestore.instance.enableNetwork();
-        } catch (e, st) {
-          debugPrint('⚠️ Firestore web setup failed (continuing): $e');
-          debugPrint('$st');
+        } catch (e) {
+          debugPrint('Firestore settings warning: $e');
         }
       }
     }();
@@ -96,18 +91,13 @@ class _BootstrapperState extends State<_Bootstrapper> {
       future: _initFuture,
       builder: (context, snapshot) {
         if (snapshot.hasError) {
-          // ✅ Visible error screen instead of white
           return Scaffold(
             body: Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: SingleChildScrollView(
-                  child: Text(
-                    'Startup error:\n\n${snapshot.error}\n\n'
-                    'Open DevTools Console for details.',
-                    style: const TextStyle(color: Colors.white),
-                    textAlign: TextAlign.center,
-                  ),
+                child: Text(
+                  'Startup error:\n\n${snapshot.error}',
+                  textAlign: TextAlign.center,
                 ),
               ),
             ),
@@ -115,13 +105,11 @@ class _BootstrapperState extends State<_Bootstrapper> {
         }
 
         if (snapshot.connectionState != ConnectionState.done) {
-          // ✅ Visible loading screen
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );
         }
 
-        // 3) Now it’s safe to read currentUser
         final user = AuthService.firebase().currentUser;
         return user == null ? const LoginPage() : const HomePage();
       },
