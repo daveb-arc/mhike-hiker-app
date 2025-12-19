@@ -47,12 +47,16 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
+
+      // =========================
+      // Drawer
+      // =========================
       drawer: Drawer(
         backgroundColor: const Color(0xff282b41),
         child: SafeArea(
           child: Column(
             children: [
-              // header
+              // Header
               Padding(
                 padding: const EdgeInsets.all(16),
                 child: Align(
@@ -67,7 +71,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // user card
+              // User card
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
                 child: Container(
@@ -82,7 +86,6 @@ class _HomePageState extends State<HomePage> {
                         final byUid = await _mHikeService.getUserByUid(uid);
                         if (byUid != null) return byUid;
                       }
-                      // fallback (older flow): lookup by email
                       if (email.isNotEmpty) {
                         return await _mHikeService.getUser(null, email);
                       }
@@ -122,13 +125,25 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 12),
               const Divider(color: Colors.white24),
 
-              // logout
+              // =========================
+              // Add hike (RESTORED)
+              // =========================
+              ListTile(
+                leading: const Icon(Icons.add),
+                title: const Text('Add hike'),
+                onTap: () {
+                  Navigator.of(context).pop(); // close drawer
+                  Navigator.of(context).pushNamed(addHikeRoute);
+                },
+              ),
+
+              // Logout
               ListTile(
                 leading: const Icon(Icons.logout),
                 title: const Text('Log out'),
                 onTap: () async {
                   Navigator.of(context).pop();
-                  await AuthService.firebase().logout(); // ✅ lowercase logout()
+                  await AuthService.firebase().logout();
                   if (!mounted) return;
                   Navigator.of(context).pushNamedAndRemoveUntil(
                     loginRoute,
@@ -141,6 +156,9 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
 
+      // =========================
+      // Body
+      // =========================
       body: StreamBuilder<List<Hike>>(
         stream: _mHikeService.allHikes,
         builder: (context, snapshot) {
@@ -155,13 +173,13 @@ class _HomePageState extends State<HomePage> {
               ),
             );
           }
+
           if (!snapshot.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
           final hikes = snapshot.data ?? [];
 
-          // "popular" rule used in your model comment
           final popular = hikes
               .where((h) => (h.popularityIndex ?? 999999) < 10)
               .toList();
@@ -236,10 +254,16 @@ class _HomePageState extends State<HomePage> {
           children: [
             Text(
               hike.title,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w700,
+              ),
             ),
             const SizedBox(height: 8),
-            Text(hike.location, style: const TextStyle(color: Colors.white70)),
+            Text(
+              hike.location,
+              style: const TextStyle(color: Colors.white70),
+            ),
             const Spacer(),
             const Text(
               'Tap to view details',
